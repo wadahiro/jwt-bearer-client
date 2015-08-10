@@ -17,6 +17,7 @@
 package org.forgerock.openam.doc.jwt.bearer;
 
 import org.forgerock.json.jose.builders.JwtBuilderFactory;
+import org.forgerock.json.jose.builders.SignedJwtBuilderImpl;
 import org.forgerock.json.jose.jws.JwsAlgorithm;
 import org.forgerock.json.jose.jws.SigningManager;
 
@@ -34,7 +35,7 @@ import java.util.Date;
 /**
  * Use a JWT as a bearer token to get an OAuth 2.0 access token.
  */
-public final class Main {
+public final class JwtAuthAndPasswordGrant {
 
     private static String clientId = "jwt-bearer-client";
     private static String tokenEndpoint = null;
@@ -47,6 +48,7 @@ public final class Main {
      */
     public static void main(String[] args) {
 
+        args = new String[]{"http://demo.example.org:8080/openam/"};
         if (args.length != 1) {
             System.err.println(getUsage());
             System.exit(-1);
@@ -60,8 +62,10 @@ public final class Main {
                 + jws);
         System.out.println();
 
+        String jwsForAssertion = getJwsForAssertion(tokenEndpoint);
+        
         try {
-            post(jws);
+            post(jws, jwsForAssertion);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(-1);
@@ -98,14 +102,34 @@ public final class Main {
         Date exp = new Date(System.currentTimeMillis() + 1000 * 60 * 5);
 
         JwtBuilderFactory jwtBuilderFactory = new JwtBuilderFactory();
-        return jwtBuilderFactory
-                .jws(new SigningManager().newRsaSigningHandler(getPrivateKey()))
-                .headers()
-                .alg(JwsAlgorithm.RS256)
-                .done()
-                .claims(jwtBuilderFactory.claims().iss(clientId).sub(clientId)
-                        .aud(Collections.singletonList(tokenEndpoint)).exp(exp)
-                        .build()).build();
+        SignedJwtBuilderImpl jwt = jwtBuilderFactory
+        .jws(new SigningManager().newRsaSigningHandler(getPrivateKey()))
+        .headers()
+        .alg(JwsAlgorithm.RS256)
+        .done()
+        .claims(jwtBuilderFactory.claims().iss(clientId).sub(clientId)
+                .aud(Collections.singletonList(tokenEndpoint)).exp(exp)
+                .build());
+        
+         System.out.println(jwt.asJwt().getClaimsSet());
+         return jwt.build();
+    }
+
+    private static String getJwsForAssertion(String tokenEndpoint) {
+        Date exp = new Date(System.currentTimeMillis() + 1000 * 60 * 5);
+
+        JwtBuilderFactory jwtBuilderFactory = new JwtBuilderFactory();
+        SignedJwtBuilderImpl jwt = jwtBuilderFactory
+        .jws(new SigningManager().newRsaSigningHandler(getPrivateKey()))
+        .headers()
+        .alg(JwsAlgorithm.RS256)
+        .done()
+        .claims(jwtBuilderFactory.claims().iss(clientId).sub("test1")
+                .aud(Collections.singletonList(tokenEndpoint)).exp(exp)
+                .build());
+        
+         System.out.println(jwt.asJwt().getClaimsSet());
+         return jwt.build();
     }
 
     private static PrivateKey getPrivateKey() {
@@ -113,7 +137,7 @@ public final class Main {
 
         try {
             KeyStore keystore = KeyStore.getInstance("JKS");
-            keystore.load(Main.class.getResourceAsStream("/keystore.jks"),
+            keystore.load(JwtAuthAndPasswordGrant.class.getResourceAsStream("/keystore.jks"),
                     "changeit".toCharArray());
             privateKey = (PrivateKey) keystore.getKey("self-signed",
                     "changeit".toCharArray());
@@ -131,7 +155,7 @@ public final class Main {
         return privateKey;
     }
 
-    private static void post(String idToken) throws Exception {
+    private static void post(String clientAssertion, String assertion) throws Exception {
         URL token = new URL(tokenEndpoint);
 
         HttpURLConnection connection = (HttpURLConnection) token
@@ -148,11 +172,14 @@ public final class Main {
                 "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
                 "UTF-8");
         String grantType = URLEncoder.encode(
-                "urn:ietf:params:oauth:grant-type:jwt-bearer", "UTF-8");
-        String data = "client_assertion_type=" + clientAssertionType
-                + "&client_assertion=" + idToken + "&grant_type=" + grantType
-                + "&assertion=" + idToken;
-
+                "password", "UTF-8");
+        String data = "" 
+                + "client_assertion_type=" + clientAssertionType
+                + "&client_assertion=" + clientAssertion
+                + "&grant_type=" + grantType
+                + "&username=test1"
+                + "&password=password2";
+        
         DataOutputStream dataOutputStream = new DataOutputStream(
                 connection.getOutputStream());
         dataOutputStream.writeBytes(data);
@@ -185,7 +212,7 @@ public final class Main {
         System.out.println(response.toString());
     }
 
-    private Main() {
+    private JwtAuthAndPasswordGrant() {
         // Prevent instantiation.
     }
 }
